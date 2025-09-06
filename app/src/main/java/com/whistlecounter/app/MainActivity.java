@@ -349,11 +349,15 @@ public class MainActivity extends AppCompatActivity {
         // Update status with real-time debug info
         if (totalEnergy > 0.01 && currentTime - lastStatusUpdate > STATUS_UPDATE_INTERVAL) {
             lastStatusUpdate = currentTime;
+            final double finalTotalEnergy = totalEnergy;
+            final double finalHighFreqRatio = highFreqRatio;
+            final double finalZeroCrossingRate = zeroCrossingRate;
+            final int finalSustainedHighFreqSamples = sustainedHighFreqSamples;
             mainHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     statusText.setText(String.format("Energy: %.3f, High: %.1f%%, ZC: %.2f, Sustained: %d", 
-                        totalEnergy, highFreqRatio * 100, zeroCrossingRate, sustainedHighFreqSamples));
+                        finalTotalEnergy, finalHighFreqRatio * 100, finalZeroCrossingRate, finalSustainedHighFreqSamples));
                 }
             });
         }
