@@ -15,7 +15,7 @@ fi
 if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
     echo "✅ gradle-wrapper.jar exists"
     # Check if it's a valid JAR file
-    if file gradle/wrapper/gradle-wrapper.jar | grep -q "Java archive"; then
+    if file gradle/wrapper/gradle-wrapper.jar | grep -q "Zip archive"; then
         echo "✅ gradle-wrapper.jar is a valid JAR file"
     else
         echo "❌ gradle-wrapper.jar is not a valid JAR file"

@@ -23,6 +23,11 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Verify Gradle wrapper
+      run: |
+        ls -la gradle/wrapper/
+        file gradle/wrapper/gradle-wrapper.jar
+
     - name: Build with Gradle
       run: ./gradlew assembleDebug
 
