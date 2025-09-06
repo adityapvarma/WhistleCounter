@@ -37,7 +37,8 @@ public class WhistleDetectionService extends Service {
     private static final long WHISTLE_COOLDOWN_MS = 3000;
     private static final double MIN_VOLUME_THRESHOLD = 0.05;
     private static final int SUSTAINED_SAMPLES_REQUIRED = 15;
-    private static final int WHISTLE_END_SAMPLES = 20;
+    private static final int WHISTLE_END_SAMPLES = 10; // Samples of silence to end whistle (reduced for faster reset)
+    private static final long WHISTLE_MAX_DURATION_MS = 30000; // Maximum 30 seconds per whistle
     
     private AudioRecord audioRecord;
     private boolean isRecording = false;
@@ -50,6 +51,7 @@ public class WhistleDetectionService extends Service {
     private int sustainedHighFreqSamples = 0;
     private int silenceSamples = 0;
     private boolean isWhistleInProgress = false;
+    private long whistleStartTime = 0;
     
     // Battery optimization
     private long lastNotificationUpdate = 0;
@@ -241,6 +243,13 @@ public class WhistleDetectionService extends Service {
     private boolean detectWhistle(double[] audioData, int length) {
         long currentTime = System.currentTimeMillis();
         
+        // Check for maximum whistle duration timeout
+        if (isWhistleInProgress && currentTime - whistleStartTime > WHISTLE_MAX_DURATION_MS) {
+            isWhistleInProgress = false;
+            silenceSamples = 0;
+            sustainedHighFreqSamples = 0;
+        }
+        
         // Only check cooldown if we're not already tracking a whistle
         if (!isWhistleInProgress && currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
             return false;
@@ -285,6 +294,7 @@ public class WhistleDetectionService extends Service {
             // If we're not already tracking a whistle, start tracking
             if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
                 isWhistleInProgress = true;
+                whistleStartTime = currentTime;
                 lastWhistleTime = currentTime;
                 return true; // This is the start of a new whistle
             }
@@ -297,6 +307,7 @@ public class WhistleDetectionService extends Service {
             if (isWhistleInProgress && silenceSamples >= WHISTLE_END_SAMPLES) {
                 isWhistleInProgress = false;
                 silenceSamples = 0;
+                sustainedHighFreqSamples = 0;
             }
         }
         
