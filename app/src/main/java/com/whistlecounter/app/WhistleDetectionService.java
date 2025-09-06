@@ -27,11 +27,11 @@ public class WhistleDetectionService extends Service {
     private static final String CHANNEL_ID = "whistle_detection_channel";
     private static final int NOTIFICATION_ID = 1;
     
-    // Audio recording constants
-    private static final int SAMPLE_RATE = 44100;
+    // Audio recording constants - optimized for battery efficiency
+    private static final int SAMPLE_RATE = 22050; // Reduced from 44100 for better battery life
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
-    private static final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+    private static final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * 2; // Larger buffer for less frequent processing
     
     // Whistle detection constants
     private static final long WHISTLE_COOLDOWN_MS = 3000;
@@ -50,6 +50,15 @@ public class WhistleDetectionService extends Service {
     private int sustainedHighFreqSamples = 0;
     private int silenceSamples = 0;
     private boolean isWhistleInProgress = false;
+    
+    // Battery optimization
+    private long lastNotificationUpdate = 0;
+    private static final long NOTIFICATION_UPDATE_INTERVAL = 2000; // Update notification max every 2 seconds
+    private int consecutiveSilentSamples = 0;
+    private static final int SILENT_SAMPLES_THRESHOLD = 100; // Reduce processing after 100 silent samples
+    private boolean isLowPowerMode = false;
+    private long lastProcessingTime = 0;
+    private static final long PROCESSING_INTERVAL_MS = 50; // Process audio every 50ms max
     
     private NotificationManager notificationManager;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -127,9 +136,9 @@ public class WhistleDetectionService extends Service {
             isRecording = true;
             audioRecord.startRecording();
             
-            // Acquire wake lock
+            // Acquire wake lock with timeout to prevent indefinite battery drain
             if (wakeLock != null && !wakeLock.isHeld()) {
-                wakeLock.acquire();
+                wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/); // Auto-release after 10 minutes
             }
             
             recordingThread = new Thread(this::processAudioData);
@@ -183,6 +192,18 @@ public class WhistleDetectionService extends Service {
         double[] fftBuffer = new double[BUFFER_SIZE];
         
         while (isRecording && audioRecord != null) {
+            long currentTime = System.currentTimeMillis();
+            
+            // Throttle processing to save battery
+            if (currentTime - lastProcessingTime < PROCESSING_INTERVAL_MS) {
+                try {
+                    Thread.sleep(10); // Small sleep to reduce CPU usage
+                } catch (InterruptedException e) {
+                    break;
+                }
+                continue;
+            }
+            
             int bytesRead = audioRecord.read(buffer, 0, BUFFER_SIZE);
             
             if (bytesRead > 0) {
@@ -191,9 +212,28 @@ public class WhistleDetectionService extends Service {
                     fftBuffer[i] = buffer[i] / 32768.0;
                 }
                 
+                // Adaptive processing based on silence detection
+                if (isLowPowerMode && consecutiveSilentSamples > SILENT_SAMPLES_THRESHOLD) {
+                    // Skip processing every other sample in low power mode
+                    if (consecutiveSilentSamples % 2 == 0) {
+                        lastProcessingTime = currentTime;
+                        continue;
+                    }
+                }
+                
                 if (detectWhistle(fftBuffer, bytesRead)) {
                     mainHandler.post(this::incrementCounter);
+                    isLowPowerMode = false; // Exit low power mode when activity detected
+                    consecutiveSilentSamples = 0;
+                    renewWakeLock(); // Renew wake lock when activity detected
+                } else {
+                    consecutiveSilentSamples++;
+                    if (consecutiveSilentSamples > SILENT_SAMPLES_THRESHOLD) {
+                        isLowPowerMode = true;
+                    }
                 }
+                
+                lastProcessingTime = currentTime;
             }
         }
     }
@@ -261,13 +301,28 @@ public class WhistleDetectionService extends Service {
     
     private void incrementCounter() {
         whistleCount++;
-        updateNotification();
+        
+        // Throttle notification updates to save battery
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastNotificationUpdate > NOTIFICATION_UPDATE_INTERVAL) {
+            updateNotification();
+            lastNotificationUpdate = currentTime;
+        }
     }
     
     private void updateNotification() {
         Notification notification = createNotification();
         if (notificationManager != null) {
             notificationManager.notify(NOTIFICATION_ID, notification);
+        }
+    }
+    
+    private void renewWakeLock() {
+        if (wakeLock != null) {
+            if (wakeLock.isHeld()) {
+                wakeLock.release();
+            }
+            wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/);
         }
     }
     
