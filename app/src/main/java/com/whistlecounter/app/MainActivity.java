@@ -46,8 +46,12 @@ public class MainActivity extends AppCompatActivity {
     private static final long WHISTLE_MAX_DURATION_MS = 30000; // Maximum 30 seconds per whistle
     private int sustainedHighFreqSamples = 0;
     private int silenceSamples = 0;
+    private int interruptionSamples = 0;
     private boolean isWhistleInProgress = false;
     private long whistleStartTime = 0;
+    private long lastStatusUpdate = 0;
+    private static final long STATUS_UPDATE_INTERVAL = 500; // 500ms between status updates
+    private static final int MAX_INTERRUPTION_SAMPLES = 3; // Allow up to 3 samples of interruption
     
     private TextView statusText;
     private TextView counterValue;
@@ -154,6 +158,7 @@ public class MainActivity extends AppCompatActivity {
             // Reset detection variables
             sustainedHighFreqSamples = 0;
             silenceSamples = 0;
+            interruptionSamples = 0;
             isWhistleInProgress = false;
             lastWhistleTime = 0;
             whistleStartTime = 0;
@@ -205,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
         isWhistleInProgress = false;
         sustainedHighFreqSamples = 0;
         silenceSamples = 0;
+        interruptionSamples = 0;
         whistleStartTime = 0;
         
         updateUI();
@@ -274,20 +280,21 @@ public class MainActivity extends AppCompatActivity {
         double midFreqEnergy = 0;
         double lowFreqEnergy = 0;
         
-        // Calculate energy in different frequency bands
+        // Calculate energy in different frequency bands (optimized for 22kHz sample rate)
         for (int i = 0; i < length; i++) {
             double sample = audioData[i];
             double energy = sample * sample;
             totalEnergy += energy;
             
-            // Divide frequency spectrum into bands
-            if (i < length / 4) {
-                lowFreqEnergy += energy;      // 0-1 kHz
+            // Divide frequency spectrum into bands for 22kHz sample rate
+            if (i < length / 8) {
+                lowFreqEnergy += energy;      // 0-2.75 kHz (low frequency)
+            } else if (i < length / 4) {
+                midFreqEnergy += energy;      // 2.75-5.5 kHz (mid frequency)
             } else if (i < length / 2) {
-                midFreqEnergy += energy;      // 1-2 kHz
-            } else {
-                highFreqEnergy += energy;     // 2-4 kHz
+                highFreqEnergy += energy;     // 5.5-11 kHz (high frequency - whistle range)
             }
+            // Ignore very high frequencies (11-22 kHz) as they're not relevant for whistles
         }
         
         // Calculate frequency ratios
@@ -313,9 +320,11 @@ public class MainActivity extends AppCompatActivity {
             // We're hearing whistle-like sound
             sustainedHighFreqSamples++;
             silenceSamples = 0; // Reset silence counter
+            interruptionSamples = 0; // Reset interruption counter
             
-            // Update status to show we're detecting whistle-like sound
-            if (sustainedHighFreqSamples > 5) { // Show progress after a few samples
+            // Update status to show we're detecting whistle-like sound (throttled)
+            if (sustainedHighFreqSamples > 5 && currentTime - lastStatusUpdate > STATUS_UPDATE_INTERVAL) {
+                lastStatusUpdate = currentTime;
                 mainHandler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -333,8 +342,13 @@ public class MainActivity extends AppCompatActivity {
             }
         } else {
             // We're not hearing whistle-like sound
-            sustainedHighFreqSamples = 0;
             silenceSamples++;
+            interruptionSamples++;
+            
+            // Only reset sustained samples if interruption is long enough
+            if (interruptionSamples >= MAX_INTERRUPTION_SAMPLES) {
+                sustainedHighFreqSamples = 0;
+            }
             
             // Update status to show we're listening
             if (silenceSamples == 1 && !isWhistleInProgress) {
@@ -394,6 +408,7 @@ public class MainActivity extends AppCompatActivity {
         isWhistleInProgress = false;
         sustainedHighFreqSamples = 0;
         silenceSamples = 0;
+        interruptionSamples = 0;
         whistleStartTime = 0;
         
         // Also reset the service counter if running

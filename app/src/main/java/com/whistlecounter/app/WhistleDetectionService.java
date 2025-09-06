@@ -50,8 +50,10 @@ public class WhistleDetectionService extends Service {
     private long lastWhistleTime = 0;
     private int sustainedHighFreqSamples = 0;
     private int silenceSamples = 0;
+    private int interruptionSamples = 0;
     private boolean isWhistleInProgress = false;
     private long whistleStartTime = 0;
+    private static final int MAX_INTERRUPTION_SAMPLES = 3; // Allow up to 3 samples of interruption
     
     // Battery optimization
     private long lastNotificationUpdate = 0;
@@ -267,13 +269,15 @@ public class WhistleDetectionService extends Service {
             double energy = sample * sample;
             totalEnergy += energy;
             
-            if (i < length / 4) {
-                lowFreqEnergy += energy;
+            // Divide frequency spectrum into bands for 22kHz sample rate
+            if (i < length / 8) {
+                lowFreqEnergy += energy;      // 0-2.75 kHz (low frequency)
+            } else if (i < length / 4) {
+                midFreqEnergy += energy;      // 2.75-5.5 kHz (mid frequency)
             } else if (i < length / 2) {
-                midFreqEnergy += energy;
-            } else {
-                highFreqEnergy += energy;
+                highFreqEnergy += energy;     // 5.5-11 kHz (high frequency - whistle range)
             }
+            // Ignore very high frequencies (11-22 kHz) as they're not relevant for whistles
         }
         
         double highFreqRatio = totalEnergy > 0 ? highFreqEnergy / totalEnergy : 0;
@@ -291,6 +295,7 @@ public class WhistleDetectionService extends Service {
             // We're hearing whistle-like sound
             sustainedHighFreqSamples++;
             silenceSamples = 0;
+            interruptionSamples = 0; // Reset interruption counter
             
             // If we're not already tracking a whistle, start tracking
             if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
@@ -301,14 +306,20 @@ public class WhistleDetectionService extends Service {
             }
         } else {
             // We're not hearing whistle-like sound
-            sustainedHighFreqSamples = 0;
             silenceSamples++;
+            interruptionSamples++;
+            
+            // Only reset sustained samples if interruption is long enough
+            if (interruptionSamples >= MAX_INTERRUPTION_SAMPLES) {
+                sustainedHighFreqSamples = 0;
+            }
             
             // If we were tracking a whistle and now have enough silence, end the whistle
             if (isWhistleInProgress && silenceSamples >= WHISTLE_END_SAMPLES) {
                 isWhistleInProgress = false;
                 silenceSamples = 0;
                 sustainedHighFreqSamples = 0;
+                interruptionSamples = 0;
             }
         }
         
