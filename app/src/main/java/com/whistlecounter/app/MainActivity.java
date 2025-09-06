@@ -34,10 +34,13 @@ public class MainActivity extends AppCompatActivity {
     
     // Whistle detection variables
     private long lastWhistleTime = 0;
-    private static final long WHISTLE_COOLDOWN_MS = 2000; // 2 seconds between detections
+    private static final long WHISTLE_COOLDOWN_MS = 3000; // 3 seconds between detections
     private static final double MIN_VOLUME_THRESHOLD = 0.05; // Minimum volume to consider
-    private static final int SUSTAINED_SAMPLES_REQUIRED = 10; // Samples needed for sustained sound
+    private static final int SUSTAINED_SAMPLES_REQUIRED = 15; // Samples needed for sustained sound
+    private static final int WHISTLE_END_SAMPLES = 20; // Samples of silence to end whistle
     private int sustainedHighFreqSamples = 0;
+    private int silenceSamples = 0;
+    private boolean isWhistleInProgress = false;
     
     private TextView statusText;
     private TextView counterValue;
@@ -123,6 +126,8 @@ public class MainActivity extends AppCompatActivity {
             
             // Reset detection variables
             sustainedHighFreqSamples = 0;
+            silenceSamples = 0;
+            isWhistleInProgress = false;
             lastWhistleTime = 0;
             
             isListening = true;
@@ -199,10 +204,11 @@ public class MainActivity extends AppCompatActivity {
     
     private boolean detectWhistle(double[] audioData, int length) {
         // Improved whistle detection for pressure cooker whistles
-        // Pressure cooker whistles are typically 1-4 kHz, sustained, and loud
+        // Handles both short and long whistles as single events
         
-        // Check cooldown period first
         long currentTime = System.currentTimeMillis();
+        
+        // Check cooldown period - don't detect new whistles too soon
         if (currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
             return false;
         }
@@ -228,39 +234,44 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         
-        // Check if total volume is loud enough (filter out quiet ambient sounds)
-        if (totalEnergy < MIN_VOLUME_THRESHOLD) {
-            sustainedHighFreqSamples = 0;
-            return false;
-        }
-        
         // Calculate frequency ratios
         double highFreqRatio = totalEnergy > 0 ? highFreqEnergy / totalEnergy : 0;
         double midFreqRatio = totalEnergy > 0 ? midFreqEnergy / totalEnergy : 0;
         double lowFreqRatio = totalEnergy > 0 ? lowFreqEnergy / totalEnergy : 0;
         
-        // Whistle characteristics:
-        // 1. High frequency content (whistles are high-pitched)
-        // 2. Not too much low frequency (not just noise)
-        // 3. Sustained over multiple samples
+        // Check if this looks like a whistle
         boolean hasHighFreq = highFreqRatio > 0.4;  // At least 40% high frequency
         boolean notTooMuchLowFreq = lowFreqRatio < 0.3;  // Less than 30% low frequency
         boolean hasMidFreq = midFreqRatio > 0.2;  // Some mid frequency content
+        boolean isLoudEnough = totalEnergy >= MIN_VOLUME_THRESHOLD;
         
-        if (hasHighFreq && notTooMuchLowFreq && hasMidFreq) {
+        boolean isWhistleSound = hasHighFreq && notTooMuchLowFreq && hasMidFreq && isLoudEnough;
+        
+        if (isWhistleSound) {
+            // We're hearing whistle-like sound
             sustainedHighFreqSamples++;
+            silenceSamples = 0; // Reset silence counter
+            
+            // If we're not already tracking a whistle, start tracking
+            if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
+                isWhistleInProgress = true;
+                sustainedHighFreqSamples = 0; // Reset counter
+                lastWhistleTime = currentTime; // Update cooldown
+                return true; // This is the start of a new whistle
+            }
         } else {
+            // We're not hearing whistle-like sound
             sustainedHighFreqSamples = 0;
+            silenceSamples++;
+            
+            // If we were tracking a whistle and now have enough silence, end the whistle
+            if (isWhistleInProgress && silenceSamples >= WHISTLE_END_SAMPLES) {
+                isWhistleInProgress = false;
+                silenceSamples = 0;
+            }
         }
         
-        // Require sustained high frequency sound for whistle detection
-        if (sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
-            sustainedHighFreqSamples = 0; // Reset counter
-            lastWhistleTime = currentTime; // Update cooldown
-            return true;
-        }
-        
-        return false;
+        return false; // No new whistle detected
     }
     
     private void incrementCounter() {
@@ -275,7 +286,7 @@ public class MainActivity extends AppCompatActivity {
             startStopButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
         }
         
-        // Reset status after 1 second
+        // Reset status after 2 seconds
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -283,7 +294,7 @@ public class MainActivity extends AppCompatActivity {
                     statusText.setText("Listening for whistles...");
                 }
             }
-        }, 1000);
+        }, 2000);
     }
     
     private void resetCounter() {
