@@ -1,0 +1,254 @@
+package com.whistlecounter.app;
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+public class MainActivity extends AppCompatActivity {
+    
+    private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int SAMPLE_RATE = 44100;
+    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+    private static final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+    
+    private AudioRecord audioRecord;
+    private boolean isRecording = false;
+    private boolean isListening = false;
+    private int whistleCount = 0;
+    private Thread recordingThread;
+    
+    private TextView statusText;
+    private TextView counterValue;
+    private Button startStopButton;
+    private Button resetButton;
+    
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        
+        initializeViews();
+        setupClickListeners();
+        checkPermissions();
+    }
+    
+    private void initializeViews() {
+        statusText = findViewById(R.id.statusText);
+        counterValue = findViewById(R.id.counterValue);
+        startStopButton = findViewById(R.id.startStopButton);
+        resetButton = findViewById(R.id.resetButton);
+    }
+    
+    private void setupClickListeners() {
+        startStopButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (isListening) {
+                    stopListening();
+                } else {
+                    startListening();
+                }
+            }
+        });
+        
+        resetButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                resetCounter();
+            }
+        });
+    }
+    
+    private void checkPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, 
+                new String[]{Manifest.permission.RECORD_AUDIO}, 
+                PERMISSION_REQUEST_CODE);
+        }
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, 
+                                         @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permission granted! You can now start listening.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, getString(R.string.permission_denied), Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+    
+    private void startListening() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, getString(R.string.permission_required), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        try {
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, 
+                    SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, BUFFER_SIZE);
+            
+            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                Toast.makeText(this, "Failed to initialize audio recording", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            isListening = true;
+            isRecording = true;
+            
+            audioRecord.startRecording();
+            
+            recordingThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    processAudioData();
+                }
+            });
+            recordingThread.start();
+            
+            updateUI();
+            
+        } catch (Exception e) {
+            Toast.makeText(this, "Error starting audio recording: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    private void stopListening() {
+        isListening = false;
+        isRecording = false;
+        
+        if (audioRecord != null) {
+            try {
+                audioRecord.stop();
+                audioRecord.release();
+                audioRecord = null;
+            } catch (Exception e) {
+                // Ignore errors during cleanup
+            }
+        }
+        
+        if (recordingThread != null) {
+            try {
+                recordingThread.join(1000); // Wait up to 1 second for thread to finish
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+            recordingThread = null;
+        }
+        
+        updateUI();
+    }
+    
+    private void processAudioData() {
+        short[] buffer = new short[BUFFER_SIZE];
+        double[] fftBuffer = new double[BUFFER_SIZE];
+        
+        while (isRecording && audioRecord != null) {
+            int bytesRead = audioRecord.read(buffer, 0, BUFFER_SIZE);
+            
+            if (bytesRead > 0) {
+                // Convert to double for FFT processing
+                for (int i = 0; i < bytesRead; i++) {
+                    fftBuffer[i] = buffer[i] / 32768.0; // Normalize to [-1, 1]
+                }
+                
+                // Detect whistle based on frequency analysis
+                if (detectWhistle(fftBuffer, bytesRead)) {
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            incrementCounter();
+                        }
+                    });
+                }
+            }
+        }
+    }
+    
+    private boolean detectWhistle(double[] audioData, int length) {
+        // Simple whistle detection based on high-frequency content
+        // Pressure cooker whistles typically have frequencies in the 1-4 kHz range
+        
+        double highFreqEnergy = 0;
+        double totalEnergy = 0;
+        
+        // Calculate energy in different frequency bands
+        for (int i = 0; i < length; i++) {
+            double sample = audioData[i];
+            totalEnergy += sample * sample;
+            
+            // High frequency detection (simplified)
+            if (i > length / 4) { // Focus on higher frequencies
+                highFreqEnergy += sample * sample;
+            }
+        }
+        
+        // Check if high frequency energy is significant
+        double highFreqRatio = totalEnergy > 0 ? highFreqEnergy / totalEnergy : 0;
+        
+        // Threshold for whistle detection
+        return highFreqRatio > 0.3 && totalEnergy > 0.01;
+    }
+    
+    private void incrementCounter() {
+        whistleCount++;
+        counterValue.setText(String.valueOf(whistleCount));
+        
+        // Provide haptic feedback
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startStopButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        }
+    }
+    
+    private void resetCounter() {
+        whistleCount = 0;
+        counterValue.setText("0");
+    }
+    
+    private void updateUI() {
+        if (isListening) {
+            statusText.setText("Listening for whistles...");
+            startStopButton.setText(getString(R.string.stop_listening));
+            startStopButton.setBackgroundColor(getResources().getColor(R.color.secondary_color));
+        } else {
+            statusText.setText(getString(R.string.listening_status));
+            startStopButton.setText(getString(R.string.start_listening));
+            startStopButton.setBackgroundColor(getResources().getColor(R.color.primary_color));
+        }
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        stopListening();
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (isListening) {
+            stopListening();
+        }
+    }
+}

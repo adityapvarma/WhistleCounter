@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_color"
+    tools:context=".MainActivity">
+
+    <TextView
+        android:id="@+id/titleText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_title"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="@color/primary_color"
+        android:layout_marginTop="60dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/listening_status"
+        android:textSize="16sp"
+        android:textColor="@color/secondary_color"
+        android:layout_marginTop="20dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/titleText" />
+
+    <LinearLayout
+        android:id="@+id/counterContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_marginTop="80dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/statusText">
+
+        <TextView
+            android:id="@+id/counterLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/whistle_count"
+            android:textSize="18sp"
+            android:textColor="@color/text_color"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:id="@+id/counterValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textSize="72sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary_color"
+            android:minWidth="120dp"
+            android:gravity="center" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/buttonContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="60dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/counterContainer">
+
+        <Button
+            android:id="@+id/startStopButton"
+            android:layout_width="120dp"
+            android:layout_height="60dp"
+            android:text="@string/start_listening"
+            android:textSize="16sp"
+            android:backgroundTint="@color/primary_color"
+            android:layout_marginEnd="20dp" />
+
+        <Button
+            android:id="@+id/resetButton"
+            android:layout_width="120dp"
+            android:layout_height="60dp"
+            android:text="@string/reset"
+            android:textSize="16sp"
+            android:backgroundTint="@color/secondary_color" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/instructionsText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/instructions"
+        android:textSize="14sp"
+        android:textColor="@color/text_color"
+        android:gravity="center"
+        android:layout_marginTop="40dp"
+        android:layout_marginStart="40dp"
+        android:layout_marginEnd="40dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/buttonContainer" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
