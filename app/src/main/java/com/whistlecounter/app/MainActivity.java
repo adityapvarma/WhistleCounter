@@ -14,6 +14,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -249,11 +250,12 @@ public class MainActivity extends AppCompatActivity {
         
         long currentTime = System.currentTimeMillis();
         
-        // Check for maximum whistle duration timeout
-        if (isWhistleInProgress && currentTime - whistleStartTime > WHISTLE_MAX_DURATION_MS) {
+        // Check for maximum whistle duration timeout (only if we have a valid start time)
+        if (isWhistleInProgress && whistleStartTime > 0 && currentTime - whistleStartTime > WHISTLE_MAX_DURATION_MS) {
             isWhistleInProgress = false;
             silenceSamples = 0;
             sustainedHighFreqSamples = 0;
+            whistleStartTime = 0;
             mainHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -301,10 +303,26 @@ public class MainActivity extends AppCompatActivity {
         
         boolean isWhistleSound = hasHighFreq && notTooMuchLowFreq && hasMidFreq && isLoudEnough;
         
+        // Debug logging (remove in production)
+        if (totalEnergy > 0.01) { // Only log when there's some sound
+            Log.d("WhistleDetection", String.format("Energy: %.4f, High: %.2f, Mid: %.2f, Low: %.2f, Loud: %b, Whistle: %b", 
+                totalEnergy, highFreqRatio, midFreqRatio, lowFreqRatio, isLoudEnough, isWhistleSound));
+        }
+        
         if (isWhistleSound) {
             // We're hearing whistle-like sound
             sustainedHighFreqSamples++;
             silenceSamples = 0; // Reset silence counter
+            
+            // Update status to show we're detecting whistle-like sound
+            if (sustainedHighFreqSamples > 5) { // Show progress after a few samples
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        statusText.setText("Detecting whistle... (" + sustainedHighFreqSamples + "/" + SUSTAINED_SAMPLES_REQUIRED + ")");
+                    }
+                });
+            }
             
             // If we're not already tracking a whistle, start tracking
             if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
@@ -317,6 +335,16 @@ public class MainActivity extends AppCompatActivity {
             // We're not hearing whistle-like sound
             sustainedHighFreqSamples = 0;
             silenceSamples++;
+            
+            // Update status to show we're listening
+            if (silenceSamples == 1 && !isWhistleInProgress) {
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        statusText.setText("Listening for whistles...");
+                    }
+                });
+            }
             
             // If we were tracking a whistle and now have enough silence, end the whistle
             if (isWhistleInProgress && silenceSamples >= WHISTLE_END_SAMPLES) {

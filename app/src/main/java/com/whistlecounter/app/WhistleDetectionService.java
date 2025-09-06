@@ -243,11 +243,12 @@ public class WhistleDetectionService extends Service {
     private boolean detectWhistle(double[] audioData, int length) {
         long currentTime = System.currentTimeMillis();
         
-        // Check for maximum whistle duration timeout
-        if (isWhistleInProgress && currentTime - whistleStartTime > WHISTLE_MAX_DURATION_MS) {
+        // Check for maximum whistle duration timeout (only if we have a valid start time)
+        if (isWhistleInProgress && whistleStartTime > 0 && currentTime - whistleStartTime > WHISTLE_MAX_DURATION_MS) {
             isWhistleInProgress = false;
             silenceSamples = 0;
             sustainedHighFreqSamples = 0;
+            whistleStartTime = 0;
         }
         
         // Only check cooldown if we're not already tracking a whistle
