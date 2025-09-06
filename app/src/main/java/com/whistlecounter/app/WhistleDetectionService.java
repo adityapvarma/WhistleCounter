@@ -241,7 +241,8 @@ public class WhistleDetectionService extends Service {
     private boolean detectWhistle(double[] audioData, int length) {
         long currentTime = System.currentTimeMillis();
         
-        if (currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
+        // Only check cooldown if we're not already tracking a whistle
+        if (!isWhistleInProgress && currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
             return false;
         }
         
@@ -277,26 +278,29 @@ public class WhistleDetectionService extends Service {
         boolean isWhistleSound = hasHighFreq && notTooMuchLowFreq && hasMidFreq && isLoudEnough;
         
         if (isWhistleSound) {
+            // We're hearing whistle-like sound
             sustainedHighFreqSamples++;
             silenceSamples = 0;
             
+            // If we're not already tracking a whistle, start tracking
             if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
                 isWhistleInProgress = true;
-                sustainedHighFreqSamples = 0;
                 lastWhistleTime = currentTime;
-                return true;
+                return true; // This is the start of a new whistle
             }
         } else {
+            // We're not hearing whistle-like sound
             sustainedHighFreqSamples = 0;
             silenceSamples++;
             
+            // If we were tracking a whistle and now have enough silence, end the whistle
             if (isWhistleInProgress && silenceSamples >= WHISTLE_END_SAMPLES) {
                 isWhistleInProgress = false;
                 silenceSamples = 0;
             }
         }
         
-        return false;
+        return false; // No new whistle detected
     }
     
     private void incrementCounter() {

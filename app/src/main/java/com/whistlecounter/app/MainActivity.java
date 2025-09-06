@@ -221,6 +221,14 @@ public class MainActivity extends AppCompatActivity {
                             incrementCounter();
                         }
                     });
+                } else if (isWhistleInProgress) {
+                    // Update status to show whistle is in progress
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            statusText.setText("Whistle in progress... Count: " + whistleCount);
+                        }
+                    });
                 }
             }
         }
@@ -232,8 +240,8 @@ public class MainActivity extends AppCompatActivity {
         
         long currentTime = System.currentTimeMillis();
         
-        // Check cooldown period - don't detect new whistles too soon
-        if (currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
+        // Only check cooldown if we're not already tracking a whistle
+        if (!isWhistleInProgress && currentTime - lastWhistleTime < WHISTLE_COOLDOWN_MS) {
             return false;
         }
         
@@ -279,7 +287,6 @@ public class MainActivity extends AppCompatActivity {
             // If we're not already tracking a whistle, start tracking
             if (!isWhistleInProgress && sustainedHighFreqSamples >= SUSTAINED_SAMPLES_REQUIRED) {
                 isWhistleInProgress = true;
-                sustainedHighFreqSamples = 0; // Reset counter
                 lastWhistleTime = currentTime; // Update cooldown
                 return true; // This is the start of a new whistle
             }
@@ -310,7 +317,7 @@ public class MainActivity extends AppCompatActivity {
             startStopButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
         }
         
-        // Reset status after 2 seconds
+        // Reset status after 3 seconds
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -318,7 +325,7 @@ public class MainActivity extends AppCompatActivity {
                     statusText.setText("Listening for whistles...");
                 }
             }
-        }, 2000);
+        }, 3000);
     }
     
     private void resetCounter() {
