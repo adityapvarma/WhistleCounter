@@ -94,6 +94,18 @@
 
     </LinearLayout>
 
+    <Button
+        android:id="@+id/backgroundToggleButton"
+        android:layout_width="200dp"
+        android:layout_height="50dp"
+        android:text="Start Background"
+        android:textSize="16sp"
+        android:backgroundTint="@color/primary_color"
+        android:layout_marginTop="20dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/buttonContainer" />
+
     <TextView
         android:id="@+id/instructionsText"
         android:layout_width="0dp"

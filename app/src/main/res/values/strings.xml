@@ -6,7 +6,7 @@
     <string name="start_listening">Start Listening</string>
     <string name="stop_listening">Stop Listening</string>
     <string name="reset">Reset</string>
-    <string name="instructions">Place your phone near the pressure cooker and tap \'Start Listening\'. The app will automatically detect and count whistles.</string>
+    <string name="instructions">Place your phone near the pressure cooker and tap \'Start Listening\' or \'Start Background\' for continuous counting. Background mode shows count in notification bar.</string>
     <string name="permission_required">Microphone permission is required to detect whistles</string>
     <string name="permission_denied">Microphone permission denied. Please enable it in settings.</string>
 </resources>

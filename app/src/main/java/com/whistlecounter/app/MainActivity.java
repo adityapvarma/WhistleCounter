@@ -1,10 +1,12 @@
 package com.whistlecounter.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,11 +18,13 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
     
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 1002;
     private static final int SAMPLE_RATE = 44100;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -46,6 +50,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView counterValue;
     private Button startStopButton;
     private Button resetButton;
+    private Button backgroundToggleButton;
+    private boolean isBackgroundMode = false;
     
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     
@@ -64,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
         counterValue = findViewById(R.id.counterValue);
         startStopButton = findViewById(R.id.startStopButton);
         resetButton = findViewById(R.id.resetButton);
+        backgroundToggleButton = findViewById(R.id.backgroundToggleButton);
     }
     
     private void setupClickListeners() {
@@ -84,6 +91,13 @@ public class MainActivity extends AppCompatActivity {
                 resetCounter();
             }
         });
+        
+        backgroundToggleButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleBackgroundMode();
+            }
+        });
     }
     
     private void checkPermissions() {
@@ -92,6 +106,16 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, 
                 new String[]{Manifest.permission.RECORD_AUDIO}, 
                 PERMISSION_REQUEST_CODE);
+        }
+        
+        // Check notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS}, 
+                    NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
         }
     }
     
@@ -300,6 +324,41 @@ public class MainActivity extends AppCompatActivity {
     private void resetCounter() {
         whistleCount = 0;
         counterValue.setText("0");
+        
+        // Also reset the service counter if running
+        if (isBackgroundMode) {
+            Intent serviceIntent = new Intent(this, WhistleDetectionService.class);
+            serviceIntent.putExtra("action", "reset");
+            startService(serviceIntent);
+        }
+    }
+    
+    private void toggleBackgroundMode() {
+        isBackgroundMode = !isBackgroundMode;
+        
+        if (isBackgroundMode) {
+            // Start background service
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                    == PackageManager.PERMISSION_GRANTED) {
+                Intent serviceIntent = new Intent(this, WhistleDetectionService.class);
+                serviceIntent.putExtra("action", "start");
+                startForegroundService(serviceIntent);
+                
+                backgroundToggleButton.setText("Stop Background");
+                statusText.setText("Background detection active - check notification bar");
+            } else {
+                Toast.makeText(this, "Microphone permission required for background detection", Toast.LENGTH_SHORT).show();
+                isBackgroundMode = false;
+            }
+        } else {
+            // Stop background service
+            Intent serviceIntent = new Intent(this, WhistleDetectionService.class);
+            serviceIntent.putExtra("action", "stop");
+            startService(serviceIntent);
+            
+            backgroundToggleButton.setText("Start Background");
+            statusText.setText("Ready to listen for whistles");
+        }
     }
     
     private void updateUI() {
