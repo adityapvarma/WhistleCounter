@@ -40,8 +40,8 @@ public class MainActivity extends AppCompatActivity {
     // Whistle detection variables
     private long lastWhistleTime = 0;
     private static final long WHISTLE_COOLDOWN_MS = 3000; // 3 seconds between detections
-    private static final double MIN_VOLUME_THRESHOLD = 0.05; // Minimum volume to consider
-    private static final int SUSTAINED_SAMPLES_REQUIRED = 15; // Samples needed for sustained sound
+    private static final double MIN_VOLUME_THRESHOLD = 0.01; // Minimum volume to consider (lowered for sensitivity)
+    private static final int SUSTAINED_SAMPLES_REQUIRED = 8; // Samples needed for sustained sound (reduced for responsiveness)
     private static final int WHISTLE_END_SAMPLES = 10; // Samples of silence to end whistle (reduced for faster reset)
     private static final long WHISTLE_MAX_DURATION_MS = 30000; // Maximum 30 seconds per whistle
     private int sustainedHighFreqSamples = 0;
@@ -275,18 +275,46 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
         
+        // Calculate total energy first
         double totalEnergy = 0;
+        for (int i = 0; i < length; i++) {
+            double sample = audioData[i];
+            totalEnergy += sample * sample;
+        }
+        
+        // Check if loud enough first
+        boolean isLoudEnough = totalEnergy >= MIN_VOLUME_THRESHOLD;
+        
+        if (!isLoudEnough) {
+            // Not loud enough, reset counters
+            sustainedHighFreqSamples = 0;
+            silenceSamples++;
+            interruptionSamples++;
+            
+            // Only reset sustained samples if interruption is long enough
+            if (interruptionSamples >= MAX_INTERRUPTION_SAMPLES) {
+                sustainedHighFreqSamples = 0;
+            }
+            return false;
+        }
+        
+        // Simple frequency analysis using zero-crossing rate and energy distribution
+        int zeroCrossings = 0;
         double highFreqEnergy = 0;
         double midFreqEnergy = 0;
         double lowFreqEnergy = 0;
         
-        // Calculate energy in different frequency bands (optimized for 22kHz sample rate)
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < length - 1; i++) {
             double sample = audioData[i];
+            double nextSample = audioData[i + 1];
             double energy = sample * sample;
-            totalEnergy += energy;
             
-            // Divide frequency spectrum into bands for 22kHz sample rate
+            // Count zero crossings (indicates high frequency content)
+            if ((sample > 0 && nextSample < 0) || (sample < 0 && nextSample > 0)) {
+                zeroCrossings++;
+            }
+            
+            // Simple frequency band analysis based on sample position
             if (i < length / 8) {
                 lowFreqEnergy += energy;      // 0-2.75 kHz (low frequency)
             } else if (i < length / 4) {
@@ -294,7 +322,6 @@ public class MainActivity extends AppCompatActivity {
             } else if (i < length / 2) {
                 highFreqEnergy += energy;     // 5.5-11 kHz (high frequency - whistle range)
             }
-            // Ignore very high frequencies (11-22 kHz) as they're not relevant for whistles
         }
         
         // Calculate frequency ratios
@@ -302,18 +329,33 @@ public class MainActivity extends AppCompatActivity {
         double midFreqRatio = totalEnergy > 0 ? midFreqEnergy / totalEnergy : 0;
         double lowFreqRatio = totalEnergy > 0 ? lowFreqEnergy / totalEnergy : 0;
         
+        // Calculate zero crossing rate (higher = more high frequency content)
+        double zeroCrossingRate = (double) zeroCrossings / length;
+        
         // Check if this looks like a whistle
-        boolean hasHighFreq = highFreqRatio > 0.4;  // At least 40% high frequency
-        boolean notTooMuchLowFreq = lowFreqRatio < 0.3;  // Less than 30% low frequency
-        boolean hasMidFreq = midFreqRatio > 0.2;  // Some mid frequency content
-        boolean isLoudEnough = totalEnergy >= MIN_VOLUME_THRESHOLD;
+        boolean hasHighFreq = highFreqRatio > 0.3;  // At least 30% high frequency (lowered threshold)
+        boolean notTooMuchLowFreq = lowFreqRatio < 0.4;  // Less than 40% low frequency (relaxed)
+        boolean hasMidFreq = midFreqRatio > 0.15;  // Some mid frequency content (lowered threshold)
+        boolean hasHighZeroCrossing = zeroCrossingRate > 0.1;  // High zero crossing rate indicates high frequency
         
-        boolean isWhistleSound = hasHighFreq && notTooMuchLowFreq && hasMidFreq && isLoudEnough;
+        boolean isWhistleSound = hasHighFreq && notTooMuchLowFreq && hasMidFreq && hasHighZeroCrossing && isLoudEnough;
         
-        // Debug logging (remove in production)
-        if (totalEnergy > 0.01) { // Only log when there's some sound
-            Log.d("WhistleDetection", String.format("Energy: %.4f, High: %.2f, Mid: %.2f, Low: %.2f, Loud: %b, Whistle: %b", 
-                totalEnergy, highFreqRatio, midFreqRatio, lowFreqRatio, isLoudEnough, isWhistleSound));
+        // Enhanced debug logging
+        if (totalEnergy > 0.001) { // Lower threshold to see more data
+            Log.d("WhistleDetection", String.format("Energy: %.4f, High: %.2f, Mid: %.2f, Low: %.2f, ZC: %.3f, Loud: %b, Whistle: %b, Sustained: %d", 
+                totalEnergy, highFreqRatio, midFreqRatio, lowFreqRatio, zeroCrossingRate, isLoudEnough, isWhistleSound, sustainedHighFreqSamples));
+        }
+        
+        // Update status with real-time debug info
+        if (totalEnergy > 0.01 && currentTime - lastStatusUpdate > STATUS_UPDATE_INTERVAL) {
+            lastStatusUpdate = currentTime;
+            mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    statusText.setText(String.format("Energy: %.3f, High: %.1f%%, ZC: %.2f, Sustained: %d", 
+                        totalEnergy, highFreqRatio * 100, zeroCrossingRate, sustainedHighFreqSamples));
+                }
+            });
         }
         
         if (isWhistleSound) {
